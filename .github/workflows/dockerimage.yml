@@ -1,0 +1,73 @@
+name: Publish Docker image
+
+on:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Test build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test Bash scripts
+        run: sudo apt-get -qq update && sudo apt-get install -y devscripts shellcheck && make test
+
+      - name: Test image
+        env:
+          VOLUME_PATH: /tmp/postgres
+          POSTGRES_DB: foo
+          POSTGRES_PASSWORD: abcd
+        run: |
+          docker compose up -d postgres
+          docker compose run backup /backup.sh
+          docker compose run backup /restore.sh /backup/latest.foo.sql.gz
+          docker compose stop
+
+  build:
+    runs-on: ubuntu-latest
+    name: Build "evoweb/postgres-cron-backup" and push it to repository
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: evoweb/postgres-cron-backup
+
+      # https://github.com/docker/setup-qemu-action
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v5
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build multi architecture image
+        uses: docker/build-push-action@v6
+        with:
+          file: Dockerfile
+          context: .
+          push: ${{ github.event_name != 'pull_request' && github.ref_name != 'main' }}
+          platforms: |
+            linux/amd64
+            linux/arm64
+            linux/arm/v7
+          tags: |
+            evoweb/postgres-cron-backup:latest
+            evoweb/postgres-cron-backup:${{ github.ref_name }}
+          labels: ${{ steps.meta.outputs.labels }}
