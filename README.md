@@ -58,46 +58,50 @@ note that you only expose the port `5432` internally to the servers and not to t
 networks:
     backend:
 
-services:
-    postgres:
-        image: postgres
-        container_name: my_postgres
-        expose:
-            - 5432
-        volumes:
-            - data:/var/lib/postgresql/data
-            # If there is no scheme, restore the last created backup (if exists)
-            - ${VOLUME_PATH}/backup/latest.${DATABASE_NAME}.sql.gz:/docker-entrypoint-initdb.d/database.sql.gz
-        environment:
-            - POSTGRES_DB=${POSTGRES_DB}
-            - POSTGRES_USER=${POSTGRES_USER}
-        restart: unless-stopped
-        networks:
-            - backend
-
-    postgres-cron-backup:
-        image: evoweb/postgres-cron-backup
-        depends_on:
-            - postgres
-        volumes:
-            - ${VOLUME_PATH}/backup:/backup
-        environment:
-            - POSTGRES_HOST=my_postgres
-            - POSTGRES_USER=postgres
-            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-            - PG_DUMP_OPTS=--no-tablespaces
-            - MAX_BACKUPS=15
-            - INIT_BACKUP=0
-            # Every day at 03:00
-            - CRON_TIME=0 3 * * *
-            # Make it small
-            - GZIP_LEVEL=9
-        restart: unless-stopped
-        networks:
-            - backend
-
 volumes:
-    data:
+  data:
+  backup:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ${BACKUP_FOLDER:-.}
+
+services:
+  db:
+    image: postgres
+    container_name: my_postgres
+    expose:
+      - 5432
+    volumes:
+      - data:/var/lib/postgresql/data
+      # If there is no scheme, restore the last created backup (if exists)
+      - ${VOLUME_PATH}/backup/latest.${DATABASE_NAME}.sql.gz:/docker-entrypoint-initdb.d/database.sql.gz
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+    restart: unless-stopped
+    networks:
+      - backend
+
+  postgres-cron-backup:
+    image: evoweb/postgres-cron-backup
+    depends_on:
+      - db
+    volumes:
+      - backup:/backup
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_DUMP_OPTS: --no-tablespaces
+      MAX_BACKUPS: 15
+      INIT_BACKUP: 0
+      CRON_TIME: 0 3 * * *
+      GZIP_LEVEL: 9
+    restart: unless-stopped
+    networks:
+      - backend
 ```
 
 
