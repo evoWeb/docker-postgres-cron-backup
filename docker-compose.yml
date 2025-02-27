@@ -18,13 +18,12 @@ services:
 
   backup:
     build: .
-    image: evoweb/postgres-cron-backup
     depends_on:
       - postgres
     volumes:
       - ${VOLUME_PATH}/backup:/backup
       # activate while developing
-      #- ./Scripts:/Scripts
+      - ./Scripts:/Scripts
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_USER=postgres
