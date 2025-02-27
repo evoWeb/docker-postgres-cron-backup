@@ -3,6 +3,7 @@
 # Get hostname: try read from file, else get from env
 [ -z "${POSTGRES_HOST_FILE}" ] || { POSTGRES_HOST=$(head -1 "${POSTGRES_HOST_FILE}"); }
 [ -z "${POSTGRES_HOST}" ] && { echo "=> POSTGRES_HOST cannot be empty" && exit 1; }
+[ -z "${POSTGRES_PORT}" ] && { POSTGRES_PORT=5432; }
 
 # Get username: try read from file, else get from env
 [ -z "${POSTGRES_USER_FILE}" ] || { POSTGRES_USER=$(head -1 "${POSTGRES_USER_FILE}"); }
@@ -21,6 +22,7 @@
 
 DATE=$(date +%Y%m%d%H%M)
 echo "=> Backup started at $(date "+%Y-%m-%d %H:%M:%S")"
+# shellcheck disable=SC2086
 DATABASES=${POSTGRES_DB:-${POSTGRES_DB:-$(PGPASSWORD=${POSTGRES_PASSWORD} psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} -c "SELECT datname FROM pg_database" | tr -d "| " | grep -v Database)}}
 for DB in ${DATABASES}
 do
@@ -35,13 +37,14 @@ do
         echo "==> Dumping database: ${DB}"
         FILENAME=/backup/$DATE.${DB}.sql
         LATEST=/backup/latest.${DB}.sql
+        # shellcheck disable=SC2086
         if PGPASSWORD=${POSTGRES_PASSWORD} pg_dump ${PG_DUMP_OPTS} -C -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} "${DB}" > "${FILENAME}"
         then
             EXT=
             if [ -z "${USE_PLAIN_SQL}" ]
             then
                 echo "==> Compressing ${DB} with LEVEL ${GZIP_LEVEL}"
-                gzip "-${GZIP_LEVEL}" -f "${FILENAME}"
+                gzip "-${GZIP_LEVEL}" -n -f "${FILENAME}"
                 EXT=.gz
                 FILENAME=${FILENAME}${EXT}
                 LATEST=${LATEST}${EXT}

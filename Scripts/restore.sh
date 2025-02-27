@@ -3,6 +3,7 @@
 # Get hostname: try read from file, else get from env
 [ -z "${POSTGRES_HOST_FILE}" ] || { POSTGRES_HOST=$(head -1 "${POSTGRES_HOST_FILE}"); }
 [ -z "${POSTGRES_HOST}" ] && { echo "=> POSTGRES_HOST cannot be empty" && exit 1; }
+[ -z "${POSTGRES_PORT}" ] && { POSTGRES_PORT=5432; }
 
 # Get username: try read from file, else get from env
 [ -z "${POSTGRES_USER_FILE}" ] || { POSTGRES_USER=$(head -1 "${POSTGRES_USER_FILE}"); }
@@ -32,13 +33,14 @@ DB_NAME=${POSTGRES_DB}
 if [ -z "${DB_NAME}" ]
 then
     echo "=> Searching database name in $1"
-    DB_NAME=$(grep -oE '(CREATE DATABASE (.+))' ${BACKUP_FILE} | cut -d ' ' -f 3)
+    DB_NAME=$(grep -oE '(CREATE DATABASE (.+))' "${BACKUP_FILE}" | cut -d ' ' -f 3)
 fi
 [ -z "${DB_NAME}" ] && { echo "=> Database name not found" && exit 1; }
 
 echo "=> Restore database ${DB_NAME} from $1"
 
-if PGPASSWORD=${POSTGRES_PASSWORD} psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} "${DB_NAME}" < ${BACKUP_FILE}
+# shellcheck disable=SC2086
+if PGPASSWORD=${POSTGRES_PASSWORD} psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} "${DB_NAME}" < "${BACKUP_FILE}"
 then
     echo "=> Restore succeeded"
 else

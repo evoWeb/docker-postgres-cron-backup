@@ -1,5 +1,6 @@
 #!/bin/bash
-tail -F /mysql_backup.log &
+
+tail -F /postgres_backup.log &
 
 if [ "${INIT_BACKUP:-0}" -gt "0" ]; then
     echo "=> Create a backup on the startup"
@@ -30,10 +31,10 @@ fi
 
 touch /HEALTHY.status
 
-echo "${CRON_TIME} /Scripts/backup.sh >> /mysql_backup.log 2>&1" > /tmp/crontab.conf
+echo "${CRON_TIME} /Scripts/backup.sh >> /postgres_backup.log 2>&1" > /tmp/crontab.conf
 crontab /tmp/crontab.conf
 echo "=> Running cron task manager in foreground"
-crond -f -l 8 -L /mysql_backup.log &
+crond -f -l 8 -L /postgres_backup.log &
 
 echo "Listening on crond, and wait..."
 
