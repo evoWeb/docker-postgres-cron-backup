@@ -10,13 +10,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: Test build
+    name: Test build "evoweb/postgres-cron-backup"
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Test Bash scripts
-        run: sudo apt-get -qq update && sudo apt-get install -y devscripts shellcheck && make test
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y devscripts shellcheck
+          make test-scripts
 
       - name: Test image
         env:
@@ -25,8 +28,8 @@ jobs:
           POSTGRES_PASSWORD: abcd
         run: |
           docker compose up -d postgres
-          docker compose run backup /Scripts/backup.sh
-          docker compose run backup /Scripts/restore.sh /backup/latest.foo.sql.gz
+          docker compose run --rm backup /Scripts/backup.sh
+          docker compose run --rm backup /Scripts/restore.sh /backup/latest.foo.sql.gz
           docker compose stop
 
   build:
