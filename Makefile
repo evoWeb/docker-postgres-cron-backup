@@ -12,18 +12,8 @@ test-scripts:
 	# Checking for syntax errors
 	for SCRIPT in Scripts/*.sh; do bash -n $$SCRIPT; done
 
-	# Checking for bashisms (currently not failing, but only listing)
-	SCRIPT="$$(which checkbashisms)";
-	if [ -n "$$SCRIPT" ] && [ -x "$$SCRIPT" ]; then
-		$$SCRIPT Scripts/*.sh || true;
-	else
-		echo "WARNING: skipping bashism test - you need to install checkbashism.";
-	fi
+	echo "Check bashisms";
+	find ./Scripts -name '*.sh' -exec docker run --rm -it -v "$(PWD):$(PWD)" -w "$(PWD)" cmd.cat/checkbashisms checkbashisms {} \;
 
-	# Checking with shellcheck (currently not failing, but only listing)
-	SCRIPT="$$(which shellcheck)";
-	if [ -n "$$SCRIPT" ] && [ -x "$$SCRIPT" ]; then
-		$$SCRIPT Scripts/*.sh || true;
-	else
-		echo "WARNING: skipping shellcheck test - you need to install shellcheck.";
-	fi
+	echo "Shell check";
+	find ./Scripts -name '*.sh' -exec docker run --rm -it -v "$(PWD):$(PWD)" -w "$(PWD)" koalaman/shellcheck:stable {} \;

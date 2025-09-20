@@ -17,8 +17,6 @@ jobs:
 
       - name: Test Bash scripts
         run: |
-          sudo apt-get -qq update
-          sudo apt-get install -y devscripts shellcheck
           make test-scripts
 
       - name: Test image
@@ -60,6 +58,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build multiarch image
+        id: build
         run: |
           docker buildx build \
             --load \
