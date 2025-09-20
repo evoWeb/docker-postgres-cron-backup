@@ -13,7 +13,7 @@ test-scripts:
 	for SCRIPT in Scripts/*.sh; do bash -n $$SCRIPT; done
 
 	echo "Check bashisms";
-	find ./Scripts -name '*.sh' -exec docker run --rm -it -v "$(PWD):$(PWD)" -w "$(PWD)" cmd.cat/checkbashisms checkbashisms {} \;
+	find ./Scripts -name '*.sh' -exec docker run --rm -v "$(PWD):$(PWD)" -w "$(PWD)" cmd.cat/checkbashisms checkbashisms {} \;
 
 	echo "Shell check";
-	find ./Scripts -name '*.sh' -exec docker run --rm -it -v "$(PWD):$(PWD)" -w "$(PWD)" koalaman/shellcheck:stable {} \;
+	find ./Scripts -name '*.sh' -exec docker run --rm -v "$(PWD):$(PWD)" -w "$(PWD)" koalaman/shellcheck:stable {} \;
