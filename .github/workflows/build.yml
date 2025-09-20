@@ -63,8 +63,6 @@ jobs:
           load: true
           tags: |
             evoweb/postgres-cron-backup:${{ matrix.version }}
-            evoweb/postgres-cron-backup:${{ matrix.version }}.x
-            evoweb/postgres-cron-backup:${{ matrix.version }}-${{ github.ref_name }}
 
       - name: Test the build image
         if: steps.build.outputs.imageid != ''
