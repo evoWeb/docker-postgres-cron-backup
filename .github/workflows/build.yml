@@ -72,7 +72,7 @@ jobs:
       - name: Test the build image
         #if: steps.build.outputs.imageid != ''
         run: |
-          echo ${{ steps.build.outputs }}
+          echo ${{ steps.build.outputs.imageid }}
           docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/postgres-cron-backup:${{ matrix.version }} psql --version
 
       - name: Login to Docker Hub
