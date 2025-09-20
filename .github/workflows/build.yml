@@ -68,7 +68,7 @@ jobs:
             --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
             --platform linux/amd64 \
             --file Versions/${{ matrix.version }}.x/Dockerfile .
-           echo "build-successful:${?}" >> ${GITHUB_OUTPUT}
+           echo "build-successful=${?}" >> ${GITHUB_OUTPUT}
 
       - name: Test the build image
         #if: steps.build.outputs.build-successful = 0
