@@ -4,33 +4,42 @@ networks:
 services:
   postgres:
     image: postgres:16
+    security_opt:
+      - seccomp:unconfined
     expose:
       - 5432
     volumes:
       - data:/var/lib/postgresql/data
       - ${VOLUME_PATH}/backup:/backup
     environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     restart: unless-stopped
     networks:
       - backend
 
   backup:
-    build: .
+    build:
+      context: .
+      dockerfile: ./Versions/16.x/Dockerfile
     depends_on:
       - postgres
     volumes:
       - ${VOLUME_PATH}/backup:/backup
       # activate while developing
-      - ./Scripts:/Scripts
+      #- ./Scripts:/Scripts
     environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - MAX_BACKUPS=1
-      - INIT_BACKUP=1
-      - CRON_TIME=0 0 * * *
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_DUMP_OPTS: --no-tablespaces
+      MAX_BACKUPS: 15
+      INIT_BACKUP: 0
+      CRON_TIME: 0 3 * * *
+      GZIP_LEVEL: 9
+      TIMEOUT: 10s
     restart: unless-stopped
     networks:
       - backend

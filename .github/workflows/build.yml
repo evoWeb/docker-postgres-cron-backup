@@ -33,8 +33,14 @@ jobs:
           docker compose stop
 
   build:
+    strategy:
+      fail-fast: true
+      max-parallel: 4
+      matrix:
+        version: [ 16.x, 17.x ]
+
     runs-on: ubuntu-latest
-    name: Build "evoweb/postgres-cron-backup" and push it to repository
+    name: Build "evoweb/postgres-cron-backup:${{ matrix.version }}" and push it to repository
     needs: test
 
     steps:
@@ -46,24 +52,40 @@ jobs:
         with:
           images: evoweb/postgres-cron-backup
 
-      # https://github.com/docker/setup-qemu-action
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Build multi architecture image
+        id: build
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        with:
+          file: Versions/${{ matrix.version }}.x/Dockerfile
+          context: .
+          load: true
+          platforms: |
+            linux/amd64
+            linux/arm64
+            linux/arm/v7
+          tags: |
+            evoweb/postgres-cron-backup:${{ matrix.version }}
+            evoweb/postgres-cron-backup:${{ matrix.version }}.x
+            evoweb/postgres-cron-backup:${{ matrix.version }}-${{ github.ref_name }}
 
-      # https://github.com/docker/setup-buildx-action
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Test the build image
+        if: steps.build.outputs.imageid != ''
+        run: |
+          docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/postgres-cron-backup:${{ matrix.version }} psql --version
 
       - name: Login to Docker Hub
+        if: steps.build.outputs.imageid != '' && github.event_name != 'pull_request' && github.ref_name != 'main'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build multi architecture image
+        if: steps.build.outputs.imageid != '' && github.event_name != 'pull_request' && github.ref_name != 'main'
         uses: docker/build-push-action@v6
         with:
-          file: Dockerfile
+          file: Versions/${{ matrix.version }}.x/Dockerfile
           context: .
           push: ${{ github.event_name != 'pull_request' && github.ref_name != 'main' }}
           platforms: |
@@ -71,6 +93,7 @@ jobs:
             linux/arm64
             linux/arm/v7
           tags: |
-            evoweb/postgres-cron-backup:latest
-            evoweb/postgres-cron-backup:${{ github.ref_name }}
+            evoweb/postgres-cron-backup:${{ matrix.version }}
+            evoweb/postgres-cron-backup:${{ matrix.version }}.x
+            evoweb/postgres-cron-backup:${{ matrix.version }}-${{ github.ref_name }}
           labels: ${{ steps.meta.outputs.labels }}

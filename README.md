@@ -59,49 +59,54 @@ networks:
     backend:
 
 volumes:
-  data:
-  backup:
-    driver: local
-    driver_opts:
-      o: bind
-      type: none
-      device: ${BACKUP_FOLDER:-.}
+    data:
+    backup:
+        driver: local
+        driver_opts:
+            o: bind
+            type: none
+            device: ${BACKUP_FOLDER:-.}
 
 services:
-  db:
-    image: postgres
-    container_name: my_postgres
-    expose:
-      - 5432
-    volumes:
-      - data:/var/lib/postgresql/data
-      # If there is no scheme, restore the last created backup (if exists)
-      - ${VOLUME_PATH}/backup/latest.${DATABASE_NAME}.sql.gz:/docker-entrypoint-initdb.d/database.sql.gz
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-    restart: unless-stopped
-    networks:
-      - backend
+    postgres:
+        image: postgres:16
+        expose:
+            - 5432
+        volumes:
+            - data:/var/lib/postgresql/data
+            - ${VOLUME_PATH}/backup:/backup
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${BW_DB_USERNAME}
+            POSTGRES_PASSWORD: ${BW_DB_PASSWORD}
+        restart: unless-stopped
+        networks:
+            - backend
 
-  postgres-cron-backup:
-    image: evoweb/postgres-cron-backup
-    depends_on:
-      - db
-    volumes:
-      - backup:/backup
-    environment:
-      POSTGRES_HOST: db
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      PG_DUMP_OPTS: --no-tablespaces
-      MAX_BACKUPS: 15
-      INIT_BACKUP: 0
-      CRON_TIME: 0 3 * * *
-      GZIP_LEVEL: 9
-    restart: unless-stopped
-    networks:
-      - backend
+    backup:
+        build:
+            context: .
+            dockerfile: ./Versions/16.x/Dockerfile
+        depends_on:
+            - postgres
+        volumes:
+            - ${VOLUME_PATH}/backup:/backup
+            # activate while developing
+            - ./Scripts:/Scripts
+        environment:
+            POSTGRES_HOST: postgres
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${BW_DB_USERNAME}
+            POSTGRES_PASSWORD: ${BW_DB_PASSWORD}
+            PG_DUMP_OPTS: --no-tablespaces
+            MAX_BACKUPS: 15
+            INIT_BACKUP: 0
+            CRON_TIME: 0 3 * * *
+            GZIP_LEVEL: 9
+        restart: unless-stopped
+        networks:
+            - backend
+
 ```
 
 
@@ -201,10 +206,10 @@ services:
         volumes:
             - ${VOLUME_PATH}/backup:/backup
         environment:
-            - POSTGRES_HOST=my_postgres
-            - POSTGRES_USER=postgres
-            - POSTGRES_DB=${DATABASE_NAME}
-            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            POSTGRES_HOST: my_postgres
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 ```
 
 
@@ -287,4 +292,10 @@ services:
 For local testing you need to install some helper packages
 ```bash
 sudo apt-get install -y devscripts shellcheck
+```
+```shell
+docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=16" --tag "evoweb/postgres-cron-backup:16" --tag "evoweb/postgres-cron-backup:16.x" --tag "evoweb/postgres-cron-backup:16.x-2.0.0" -f Versions/16.x/Dockerfile .
+docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=17" --tag "evoweb/postgres-cron-backup:17" --tag "evoweb/postgres-cron-backup:17.x" --tag "evoweb/postgres-cron-backup:17.x-2.0.0" -f Versions/17.x/Dockerfile .
+docker run --rm evoweb/postgres-cron-backup:16.x-2.0.0 psql --version
+docker run --rm evoweb/postgres-cron-backup:17.x-2.0.0 psql --version
 ```
