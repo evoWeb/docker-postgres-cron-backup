@@ -25,7 +25,8 @@ jobs:
         env:
           VOLUME_PATH: /tmp/postgres
           POSTGRES_DB: foo
-          POSTGRES_PASSWORD: abcd
+          POSTGRES_USER: bar
+          POSTGRES_PASSWORD: baz
         run: |
           docker compose up -d postgres
           docker compose run --rm backup /Scripts/backup.sh
