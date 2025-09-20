@@ -87,10 +87,7 @@ jobs:
         run: |
           docker buildx build \
             --push \
-            --load \
-            --no-cache \
             --compress \
-            --progress=plain \
             --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
             --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x \
             --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x-${{ github.ref_name }} \
