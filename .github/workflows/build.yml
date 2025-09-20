@@ -53,25 +53,28 @@ jobs:
         with:
           images: evoweb/postgres-cron-backup
 
-      - name: Build for test
-        id: build
-        continue-on-error: true
-        uses: docker/build-push-action@v6
-        with:
-          file: Versions/${{ matrix.version }}.x/Dockerfile
-          context: .
-          load: true
-          tags: |
-            evoweb/postgres-cron-backup:${{ matrix.version }}
+      # the following two steps fix ERROR: failed to build: Multi-platform build is not supported for the docker driver.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build multiarch image
+        run: |
+          docker buildx build \
+            --load \
+            --no-cache \
+            --compress \
+            --progress=plain \
+            --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
+            --label ${{ steps.meta.outputs.labels }} \
+            --platform linux/amd64 \
+            --file Versions/${{ matrix.version }}.x/Dockerfile .
 
       - name: Test the build image
         if: steps.build.outputs.imageid != ''
         run: |
           docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/postgres-cron-backup:${{ matrix.version }} psql --version
-
-      # https://github.com/docker/setup-qemu-action
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Login to Docker Hub
         if: steps.build.outputs.imageid != '' && github.event_name != 'pull_request' && github.ref_name != 'main'
@@ -80,19 +83,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build multi architecture image
+      - name: Build multi platform image
         if: steps.build.outputs.imageid != '' && github.event_name != 'pull_request' && github.ref_name != 'main'
-        uses: docker/build-push-action@v6
-        with:
-          file: Versions/${{ matrix.version }}.x/Dockerfile
-          context: .
-          push: ${{ github.event_name != 'pull_request' && github.ref_name != 'main' }}
-          platforms: |
-            linux/amd64
-            linux/arm64
-            linux/arm/v7
-          tags: |
-            evoweb/postgres-cron-backup:${{ matrix.version }}
-            evoweb/postgres-cron-backup:${{ matrix.version }}.x
-            evoweb/postgres-cron-backup:${{ matrix.version }}-${{ github.ref_name }}
-          labels: ${{ steps.meta.outputs.labels }}
+        run: |
+          docker buildx build \
+            --push \
+            --load \
+            --no-cache \
+            --compress \
+            --progress=plain \
+            --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
+            --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x \
+            --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x-${{ github.ref_name }} \
+            --label ${{ steps.meta.outputs.labels }} \
+            --platform linux/amd64,linux/arm/v7,linux/arm64 \
+            --file Versions/${{ matrix.version }}.x/Dockerfile .
