@@ -38,7 +38,7 @@ jobs:
       fail-fast: true
       max-parallel: 4
       matrix:
-        version: [ 16.x, 17.x ]
+        version: [ 16, 17 ]
 
     runs-on: ubuntu-latest
     name: Build "evoweb/postgres-cron-backup:${{ matrix.version }}" and push it to repository
@@ -53,7 +53,7 @@ jobs:
         with:
           images: evoweb/postgres-cron-backup
 
-      - name: Build multi architecture image
+      - name: Build for test
         id: build
         continue-on-error: true
         uses: docker/build-push-action@v6
