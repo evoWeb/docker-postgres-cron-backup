@@ -296,6 +296,8 @@ sudo apt-get install -y devscripts shellcheck
 ```shell
 docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=16" --tag "evoweb/postgres-cron-backup:16" --tag "evoweb/postgres-cron-backup:16.x" --tag "evoweb/postgres-cron-backup:16.x-2.0.0" -f Versions/16.x/Dockerfile .
 docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=17" --tag "evoweb/postgres-cron-backup:17" --tag "evoweb/postgres-cron-backup:17.x" --tag "evoweb/postgres-cron-backup:17.x-2.0.0" -f Versions/17.x/Dockerfile .
+docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=18" --tag "evoweb/postgres-cron-backup:18" --tag "evoweb/postgres-cron-backup:18.x" --tag "evoweb/postgres-cron-backup:18.x-2.0.0" -f Versions/18.x/Dockerfile .
 docker run --rm evoweb/postgres-cron-backup:16.x-2.0.0 psql --version
 docker run --rm evoweb/postgres-cron-backup:17.x-2.0.0 psql --version
+docker run --rm evoweb/postgres-cron-backup:18.x-2.0.0 psql --version
 ```
