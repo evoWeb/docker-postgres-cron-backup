@@ -19,8 +19,10 @@ docker container run -d \
 
 ### Healthcheck
 
-Healthcheck is provided as a basic init control.
-Container is **Healthy** after the database init phase, that is after `INIT_BACKUP` or `INIT_RESTORE_LATEST` happens without check if there is an error, **Starting** otherwise. Not other checks are actually provided.
+Container is **Healthy** after the database init phase, that is after `INIT_BACKUP` or `INIT_RESTORE_LATEST` happened, **Starting** otherwise.
+It turns **Unhealthy** within three minutes when a backup fails, and healthy again with the next successful backup.
+
+A backup fails when no database is found or when `pg_dump` or `gzip` exits with an error. In that case `backup.sh` exits with a non-zero code, removes the incomplete dump and keeps all existing backups, so `MAX_BACKUPS` never rotates out a good backup in favor of a broken one.
 
 
 ## Variables

@@ -20,10 +20,22 @@
 # Get level from env, else use 6
 [ -z "${GZIP_LEVEL}" ] && { GZIP_LEVEL=6; }
 
+set -o pipefail
+
+# Stream the dump through gzip, so no uncompressed copy hits the disk and gzip
+# never has to copy file modes, which fails on root_squashed NFS shares
+function dump_database {
+    # shellcheck disable=SC2086
+    PGPASSWORD=${POSTGRES_PASSWORD} pg_dump ${PG_DUMP_OPTS} -C -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} "${1}" \
+        | if [ -z "${USE_PLAIN_SQL}" ]; then gzip "-${GZIP_LEVEL}" -n; else cat; fi
+}
+
 DATE=$(date +%Y%m%d%H%M)
+FAILED=0
 echo "=> Backup started at $(date "+%Y-%m-%d %H:%M:%S")"
 # shellcheck disable=SC2086
-DATABASES=${POSTGRES_DB:-${POSTGRES_DB:-$(PGPASSWORD=${POSTGRES_PASSWORD} psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} -c "SELECT datname FROM pg_database" | tr -d "| " | grep -v Database)}}
+DATABASES=${POSTGRES_DB:-$(PGPASSWORD=${POSTGRES_PASSWORD} psql -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} -c "SELECT datname FROM pg_database" | tr -d "| " | grep -v Database)}
+[ -z "${DATABASES}" ] && { echo "==> ERROR: No database found to back up"; FAILED=1; }
 for DB in ${DATABASES}
 do
     if  [[ "${DB}" != "template0" ]] \
@@ -34,33 +46,36 @@ do
         && [[ "${DB}" != -* ]] \
         && [[ "${DB}" != _* ]]
     then
+        EXT=
+        [ -z "${USE_PLAIN_SQL}" ] && EXT=.gz
+        FILENAME=/backup/$DATE.${DB}.sql${EXT}
+        LATEST=/backup/latest.${DB}.sql${EXT}
         echo "==> Dumping database: ${DB}"
-        FILENAME=/backup/$DATE.${DB}.sql
-        LATEST=/backup/latest.${DB}.sql
-        # shellcheck disable=SC2086
-        if PGPASSWORD=${POSTGRES_PASSWORD} pg_dump ${PG_DUMP_OPTS} -C -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" ${PSQL_SSL_OPTS} "${DB}" > "${FILENAME}"
+        # Write to a temporary name first, delete.sh must never count an incomplete dump
+        if dump_database "${DB}" > "${FILENAME}.tmp" && mv "${FILENAME}.tmp" "${FILENAME}"
         then
-            EXT=
-            if [ -z "${USE_PLAIN_SQL}" ]
-            then
-                echo "==> Compressing ${DB} with LEVEL ${GZIP_LEVEL}"
-                gzip "-${GZIP_LEVEL}" -n -f "${FILENAME}"
-                EXT=.gz
-                FILENAME=${FILENAME}${EXT}
-                LATEST=${LATEST}${EXT}
-            fi
             BASENAME=$(basename "${FILENAME}")
             echo "==> Creating symlink to latest backup: ${BASENAME}"
             rm "${LATEST}" 2> /dev/null
-            cd /backup || exit && ln -s "${BASENAME}" "$(basename "${LATEST}")"
+            cd /backup || exit 1 && ln -s "${BASENAME}" "$(basename "${LATEST}")"
             if [ -n "${MAX_BACKUPS}" ]
             then
                 # Execute the delete script, delete older backup or other custom delete script
                 /Scripts/delete.sh "${DB}" ${EXT}
             fi
         else
-            rm -rf "${FILENAME}"
+            echo "==> ERROR: Dumping database ${DB} failed, keeping existing backups"
+            rm -f "${FILENAME}.tmp"
+            FAILED=$((FAILED + 1))
         fi
     fi
 done
+
+if [ "${FAILED}" -gt 0 ]
+then
+    touch /FAILED.status
+    echo "=> Backup process failed at $(date "+%Y-%m-%d %H:%M:%S")"
+    exit 1
+fi
+rm -f /FAILED.status
 echo "=> Backup process finished at $(date "+%Y-%m-%d %H:%M:%S")"

@@ -41,10 +41,12 @@ RUN --mount=type=cache,target=/var/cache/apk apk add --update \
 
 VOLUME ["/backup"]
 
+# Healthy once the init phase is done, unhealthy as soon as the last backup failed.
+# The long start period covers a slow INIT_BACKUP or INIT_RESTORE_LATEST.
 HEALTHCHECK \
     --interval=60s \
-    --retries=1800 \
-    --start-period=20s \
-    CMD stat /HEALTHY.status || exit 1
+    --retries=3 \
+    --start-period=1h \
+    CMD [ -f /HEALTHY.status ] && [ ! -f /FAILED.status ] || exit 1
 
 CMD ["/Scripts/dockerize.sh"]
