@@ -11,6 +11,10 @@ all: test-scripts
 changelog:
 	./Build/changelog.sh
 
+.PHONY: release
+release:
+	./Build/release.sh "$${RELEASE:-}"
+
 .PHONY: test-scripts
 test-scripts:
 	# Checking for syntax errors

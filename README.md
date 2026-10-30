@@ -297,3 +297,15 @@ docker compose run --rm --build backup /Scripts/backup.sh
 docker compose run --rm backup /Scripts/restore.sh /backup/latest.foo.sql.gz
 docker compose down -v
 ```
+
+
+## Release
+
+Notes that cannot be derived from the commit subjects, like breaking changes, go into `Build/ReleaseNotes/<release>.md` and have to be committed first. Then create and push the release:
+
+```shell
+make release RELEASE=x.y.z
+git push origin main x.y.z
+```
+
+`make release` writes `CHANGELOG.md`, commits it as `[TASK] Release x.y.z` and tags that commit, so the tag contains its own changelog. Pushing the tag publishes the images, the Docker Hub description and a GitHub release with the changelog section of that release.
