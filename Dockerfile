@@ -1,15 +1,19 @@
 ARG POSTGRES_VERSION=18
 
-# Build dockerize
-FROM golang:1.27.3-alpine3.24 AS binary
+# Build dockerize natively and cross-compile it for the target platform
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine3.24 AS binary
 RUN apk -U add git
 
 ARG DOCKERIZE_VERSION=v0.16.0
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
 
 WORKDIR /go/src/github.com/jwilder
 RUN git clone --depth 1 --branch ${DOCKERIZE_VERSION} https://github.com/jwilder/dockerize.git \
     && cd dockerize \
-    && CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-X main.buildVersion=${DOCKERIZE_VERSION}" -o /go/bin/dockerize .
+    && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
+       go build -a -ldflags "-X main.buildVersion=${DOCKERIZE_VERSION}" -o /go/bin/dockerize .
 
 # Export container
 FROM alpine:3.24
