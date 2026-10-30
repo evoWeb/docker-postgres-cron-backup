@@ -7,6 +7,10 @@ SHELL := /bin/bash
 
 all: test-scripts
 
+.PHONY: changelog
+changelog:
+	./Build/changelog.sh
+
 .PHONY: test-scripts
 test-scripts:
 	# Checking for syntax errors
