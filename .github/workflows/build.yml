@@ -68,7 +68,8 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       # The cache is scoped to this workflow run, so publish pushes exactly the
-      # tested layers while later runs still pick up fresh Alpine packages
+      # tested layers while later runs still pick up fresh Alpine packages.
+      # It is only written for tags, as publish is the only consumer.
       - name: Build image
         uses: docker/build-push-action@v7
         with:
@@ -77,7 +78,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           build-args: POSTGRES_VERSION=${{ matrix.version }}
           tags: evoweb/postgres-cron-backup:${{ matrix.version }}
-          cache-to: type=gha,mode=max,ignore-error=true,scope=${{ github.run_id }}-${{ matrix.version }}-${{ matrix.platform }}
+          cache-to: ${{ startsWith(github.ref, 'refs/tags/') && format('type=gha,mode=max,ignore-error=true,scope={0}-{1}-{2}', github.run_id, matrix.version, matrix.platform) || '' }}
 
       - name: Test the build image
         run: |
