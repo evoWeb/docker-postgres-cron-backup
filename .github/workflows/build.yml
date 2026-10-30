@@ -93,7 +93,9 @@ jobs:
         version: [ 16, 17, 18 ]
 
     runs-on: ubuntu-latest
-    name: Publish "evoweb/postgres-cron-backup:${{ matrix.version }}"
+    # No matrix expression in the name: a job skipped by its if is never expanded,
+    # so GitHub appends the matrix values itself, e.g. "... (16)"
+    name: Publish "evoweb/postgres-cron-backup"
     needs: build
 
     steps:
