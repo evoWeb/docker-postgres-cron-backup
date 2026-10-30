@@ -1,4 +1,4 @@
-name: Publish Docker image
+name: Test and publish Docker image
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - 'main'
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
 
 jobs:
   test-scripts:
@@ -13,7 +14,7 @@ jobs:
     name: Test Bash scripts
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Test Bash scripts
         run: |
@@ -29,7 +30,7 @@ jobs:
     name: Test backup and restore with PostgreSQL ${{ matrix.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Test image
         env:
@@ -47,62 +48,79 @@ jobs:
   build:
     strategy:
       fail-fast: true
-      max-parallel: 4
+      matrix:
+        version: [ 16, 17, 18 ]
+        platform:
+          - linux/amd64
+          - linux/arm64
+          - linux/arm/v7
+
+    runs-on: ubuntu-latest
+    name: Build "evoweb/postgres-cron-backup:${{ matrix.version }}" for ${{ matrix.platform }}
+    needs: [ test-scripts, test ]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # The cache is scoped to this workflow run, so publish pushes exactly the
+      # tested layers while later runs still pick up fresh Alpine packages
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          platforms: ${{ matrix.platform }}
+          build-args: POSTGRES_VERSION=${{ matrix.version }}
+          tags: evoweb/postgres-cron-backup:${{ matrix.version }}
+          cache-to: type=gha,mode=max,ignore-error=true,scope=${{ github.run_id }}-${{ matrix.version }}-${{ matrix.platform }}
+
+      - name: Test the build image
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} evoweb/postgres-cron-backup:${{ matrix.version }} psql --version \
+            | grep "(PostgreSQL) ${{ matrix.version }}\."
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: true
       matrix:
         version: [ 16, 17, 18 ]
 
     runs-on: ubuntu-latest
-    name: Build "evoweb/postgres-cron-backup:${{ matrix.version }}" and push it to repository
-    needs: [ test-scripts, test ]
+    name: Publish "evoweb/postgres-cron-backup:${{ matrix.version }}"
+    needs: build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: evoweb/postgres-cron-backup
-
-      # the following two steps fix ERROR: failed to build: Multi-platform build is not supported for the docker driver.
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image
-        run: |
-          docker buildx build \
-            --load \
-            --no-cache \
-            --compress \
-            --progress=plain \
-            --build-arg POSTGRES_VERSION=${{ matrix.version }} \
-            --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
-            --platform linux/amd64 \
-            .
-
-      - name: Test the build image
-        run: |
-          docker run --rm evoweb/postgres-cron-backup:${{ matrix.version }} psql --version \
-            | grep "(PostgreSQL) ${{ matrix.version }}\."
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to Docker Hub
-        if: github.event_name != 'pull_request' && github.ref_name != 'main'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build multi platform image
-        if: github.event_name != 'pull_request' && github.ref_name != 'main'
-        run: |
-          docker buildx build \
-            --push \
-            --compress \
-            --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
-            --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x \
-            --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x-${{ github.ref_name }} \
-            --build-arg POSTGRES_VERSION=${{ matrix.version }} \
-            --platform linux/amd64,linux/arm/v7,linux/arm64 \
-            .
+      - name: Build and push multi platform image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          build-args: POSTGRES_VERSION=${{ matrix.version }}
+          tags: |
+            evoweb/postgres-cron-backup:${{ matrix.version }}
+            evoweb/postgres-cron-backup:${{ matrix.version }}.x
+            evoweb/postgres-cron-backup:${{ matrix.version }}.x-${{ github.ref_name }}
+          cache-from: |
+            type=gha,scope=${{ github.run_id }}-${{ matrix.version }}-linux/amd64
+            type=gha,scope=${{ github.run_id }}-${{ matrix.version }}-linux/arm64
+            type=gha,scope=${{ github.run_id }}-${{ matrix.version }}-linux/arm/v7
