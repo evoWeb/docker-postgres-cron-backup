@@ -8,9 +8,9 @@ on:
       - '[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
-  test:
+  test-scripts:
     runs-on: ubuntu-latest
-    name: Test build "evoweb/postgres-cron-backup"
+    name: Test Bash scripts
 
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +19,27 @@ jobs:
         run: |
           make test-scripts
 
+  test:
+    strategy:
+      fail-fast: true
+      matrix:
+        version: [ 16, 17, 18 ]
+
+    runs-on: ubuntu-latest
+    name: Test backup and restore with PostgreSQL ${{ matrix.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Test image
         env:
+          POSTGRES_VERSION: ${{ matrix.version }}
           VOLUME_PATH: /tmp/postgres
           POSTGRES_DB: foo
           POSTGRES_USER: bar
           POSTGRES_PASSWORD: baz
         run: |
-          docker compose up -d postgres
+          docker compose up -d --wait postgres
           docker compose run --rm backup /Scripts/backup.sh
           docker compose run --rm backup /Scripts/restore.sh /backup/latest.foo.sql.gz
           docker compose stop
@@ -40,7 +53,7 @@ jobs:
 
     runs-on: ubuntu-latest
     name: Build "evoweb/postgres-cron-backup:${{ matrix.version }}" and push it to repository
-    needs: test
+    needs: [ test-scripts, test ]
 
     steps:
       - uses: actions/checkout@v4
@@ -57,33 +70,32 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build multiarch image
-        id: build
+      - name: Build image
         run: |
           docker buildx build \
             --load \
             --no-cache \
             --compress \
             --progress=plain \
+            --build-arg POSTGRES_VERSION=${{ matrix.version }} \
             --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
             --platform linux/amd64 \
-            --file Versions/${{ matrix.version }}.x/Dockerfile .
-           echo "build-successful=${?}" >> ${GITHUB_OUTPUT}
+            .
 
       - name: Test the build image
-        if: steps.build.outputs.build-successful == 0
         run: |
-          docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/postgres-cron-backup:${{ matrix.version }} psql --version
+          docker run --rm evoweb/postgres-cron-backup:${{ matrix.version }} psql --version \
+            | grep "(PostgreSQL) ${{ matrix.version }}\."
 
       - name: Login to Docker Hub
-        if: steps.build.outputs.build-successful == 0 && github.event_name != 'pull_request' && github.ref_name != 'main'
+        if: github.event_name != 'pull_request' && github.ref_name != 'main'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build multi platform image
-        if: steps.build.outputs.build-successful == 0 && github.event_name != 'pull_request' && github.ref_name != 'main'
+        if: github.event_name != 'pull_request' && github.ref_name != 'main'
         run: |
           docker buildx build \
             --push \
@@ -91,5 +103,6 @@ jobs:
             --tag evoweb/postgres-cron-backup:${{ matrix.version }} \
             --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x \
             --tag evoweb/postgres-cron-backup:${{ matrix.version }}.x-${{ github.ref_name }} \
+            --build-arg POSTGRES_VERSION=${{ matrix.version }} \
             --platform linux/amd64,linux/arm/v7,linux/arm64 \
-            --file Versions/${{ matrix.version }}.x/Dockerfile .
+            .

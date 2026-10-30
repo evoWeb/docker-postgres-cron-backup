@@ -1,19 +1,19 @@
-# Build dockerize
-FROM golang:1.25.1-alpine3.22 AS binary
-RUN apk -U add openssl git
+ARG POSTGRES_VERSION=18
 
-ARG DOCKERIZE_VERSION=v0.9.6
-ENV GO111MODULE=on
+# Build dockerize
+FROM golang:1.27.3-alpine3.24 AS binary
+RUN apk -U add git
+
+ARG DOCKERIZE_VERSION=v0.16.0
 
 WORKDIR /go/src/github.com/jwilder
-RUN git clone https://github.com/jwilder/dockerize.git \
+RUN git clone --depth 1 --branch ${DOCKERIZE_VERSION} https://github.com/jwilder/dockerize.git \
     && cd dockerize \
-    && git checkout ${DOCKERIZE_VERSION} \
-    && go mod tidy \
-    && CGO_ENABLED=0 GOOS=linux GO111MODULE=${GO111MODULE} go build -a -o /go/bin/dockerize .
+    && CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-X main.buildVersion=${DOCKERIZE_VERSION}" -o /go/bin/dockerize .
 
 # Export container
-FROM alpine:3.22
+FROM alpine:3.24
+ARG POSTGRES_VERSION
 LABEL maintainer="Sebastian Fischer <postgres-cron-backup@evoweb.de>"
 
 ENV CRON_TIME="0 3 * * sun" \
@@ -21,7 +21,7 @@ ENV CRON_TIME="0 3 * * sun" \
     POSTGRES_PORT="5432" \
     TIMEOUT="10s" \
     PG_DUMP_OPTS="--rows-per-insert=1" \
-    VERSION=17
+    POSTGRES_VERSION=${POSTGRES_VERSION}
 
 COPY --from=binary /go/bin/dockerize /usr/local/bin
 COPY ["/Scripts/run.sh", "/Scripts/backup.sh", "/Scripts/restore.sh", "/Scripts/delete.sh", "/Scripts/dockerize.sh", "/Scripts/"]
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/var/cache/apk apk add --update \
     bash \
     gzip \
     openssl \
-    postgresql${VERSION}-client \
+    postgresql${POSTGRES_VERSION}-client \
     fdupes \
     && mkdir /backup \
     && chmod 777 /backup \

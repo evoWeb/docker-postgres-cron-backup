@@ -13,8 +13,10 @@ docker container run -d \
        --env POSTGRES_PASSWORD=my_password \
        --link postgres
        --volume /path/to/my/backup/folder:/backup
-       evoweb/postgres-cron-backup
+       evoweb/postgres-cron-backup:18
 ```
+
+Use the image tag matching the major version of your PostgreSQL server (`16`, `17` or `18`), so `pg_dump` and `psql` are compatible with it.
 
 
 ### Healthcheck
@@ -37,7 +39,7 @@ A backup fails when no database is found or when `pg_dump` or `gzip` exits with 
 - `POSTGRES_DB`: The database name to dump. Default: `--all-databases`.
 - `POSTGRES_DB_FILE`: The file in container where to find the database name(s) in your postgres database (cf. docker secrets). In that file, there can be several database names: one per line. You should use either POSTGRES_DB or POSTGRES_DB_FILE (see examples below).
 - `PG_DUMP_OPTS`: Command line arguments to pass to pg_dump (see [pg_dump documentation](https://www.postgresql.org/docs/current/app-pgdump.html)).
-- `PSQL_SSL_OPTS`: Command line arguments to use [SSL](https://www.postgresql.org/docs/16/ssl-tcp.html).
+- `PSQL_SSL_OPTS`: Command line arguments to use [SSL](https://www.postgresql.org/docs/current/ssl-tcp.html).
 - `CRON_TIME`: The interval of cron job to run pg_dump. `0 3 * * sun` by default, which is every Sunday at 03:00. It uses UTC timezone.
 - `MAX_BACKUPS`: The number of backups to keep. When reaching the limit, the old backup will be discarded. No limit by default.
 - `INIT_BACKUP`: If set, create a backup when the container starts.
@@ -71,11 +73,11 @@ volumes:
 
 services:
     postgres:
-        image: postgres:16
+        image: postgres:18
         expose:
             - 5432
         volumes:
-            - data:/var/lib/postgresql/data
+            - data:/var/lib/postgresql
             - ${VOLUME_PATH}/backup:/backup
         environment:
             POSTGRES_DB: ${POSTGRES_DB}
@@ -88,7 +90,8 @@ services:
     backup:
         build:
             context: .
-            dockerfile: ./Versions/16.x/Dockerfile
+            args:
+                POSTGRES_VERSION: 18
         depends_on:
             - postgres
         volumes:
@@ -135,12 +138,12 @@ networks:
 
 services:
     postgres:
-        image: postgres:16
+        image: postgres:18
         container_name: my_postgres
         expose:
             - 5432
         volumes:
-            - data:/var/lib/postgresql/data
+            - data:/var/lib/postgresql
             - ${VOLUME_PATH}/backup:/backup
         environment:
             - POSTGRES_DB_FILE=/run/secrets/postgres_db
@@ -155,7 +158,7 @@ services:
             - backend
 
     backup:
-        image: evoweb/postgres-cron-backup
+        image: evoweb/postgres-cron-backup:18
         depends_on:
             - postgres
         volumes:
@@ -201,7 +204,7 @@ To restore a database from a certain backup you may have to specify the database
 ```yaml
 services:
     postgres-cron-backup:
-        image: evoweb/postgres-cron-backup
+        image: evoweb/postgres-cron-backup:18
         command: "/restore.sh /backup/201708060500.${DATABASE_NAME}.sql.gz"
         depends_on:
             - postgres
@@ -232,7 +235,7 @@ Set `EXIT_BACKUP` to automatically create a last backup on shutdown.
 ```yaml
 services:
     postgres-cron-backup:
-        image: evoweb/postgres-cron-backup
+        image: evoweb/postgres-cron-backup:18
         depends_on:
             - postgres
         volumes:
@@ -263,7 +266,7 @@ services:
         expose:
             - 5432
         volumes:
-            - data:/var/lib/postgresql/data
+            - data:/var/lib/postgresql
             # If there is no scheme, restore using the init script (if exists)
             - ./init-script.sql:/docker-entrypoint-initdb.d/database.sql.gz
         environment:
@@ -279,7 +282,7 @@ services:
         expose:
             - 5432
         volumes:
-            - data:/var/lib/postgresql/data
+            - data:/var/lib/postgresql
             # If there is no scheme, restore using the init script (if exists)
             - ./init-script.sql:/docker-entrypoint-initdb.d/database.sql.gz
         environment:
@@ -295,11 +298,17 @@ For local testing you need to install some helper packages
 ```bash
 sudo apt-get install -y devscripts shellcheck
 ```
+Build and check an image for a PostgreSQL major version:
 ```shell
-docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=16" --tag "evoweb/postgres-cron-backup:16" --tag "evoweb/postgres-cron-backup:16.x" --tag "evoweb/postgres-cron-backup:16.x-2.0.0" -f Versions/16.x/Dockerfile .
-docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=17" --tag "evoweb/postgres-cron-backup:17" --tag "evoweb/postgres-cron-backup:17.x" --tag "evoweb/postgres-cron-backup:17.x-2.0.0" -f Versions/17.x/Dockerfile .
-docker buildx build --load --no-cache --compress --progress=plain --build-arg="VERSION=18" --tag "evoweb/postgres-cron-backup:18" --tag "evoweb/postgres-cron-backup:18.x" --tag "evoweb/postgres-cron-backup:18.x-2.0.0" -f Versions/18.x/Dockerfile .
-docker run --rm evoweb/postgres-cron-backup:16.x-2.0.0 psql --version
-docker run --rm evoweb/postgres-cron-backup:17.x-2.0.0 psql --version
-docker run --rm evoweb/postgres-cron-backup:18.x-2.0.0 psql --version
+docker buildx build --load --no-cache --compress --progress=plain --build-arg POSTGRES_VERSION=18 --tag evoweb/postgres-cron-backup:18 .
+docker run --rm evoweb/postgres-cron-backup:18 psql --version
+```
+
+Run backup and restore against a PostgreSQL server of the same version:
+```shell
+export POSTGRES_VERSION=18 VOLUME_PATH=/tmp/postgres POSTGRES_DB=foo POSTGRES_USER=bar POSTGRES_PASSWORD=baz
+docker compose up -d --wait postgres
+docker compose run --rm --build backup /Scripts/backup.sh
+docker compose run --rm backup /Scripts/restore.sh /backup/latest.foo.sql.gz
+docker compose down -v
 ```
