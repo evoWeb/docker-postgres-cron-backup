@@ -127,3 +127,21 @@ jobs:
             type=gha,scope=${{ github.run_id }}-${{ matrix.version }}-linux/amd64
             type=gha,scope=${{ github.run_id }}-${{ matrix.version }}-linux/arm64
             type=gha,scope=${{ github.run_id }}-${{ matrix.version }}-linux/arm/v7
+
+  description:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    name: Update Docker Hub description
+    needs: publish
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: evoweb/postgres-cron-backup
+          short-description: Periodic pg_dump backups of PostgreSQL databases, scheduled by cron
+          readme-filepath: ./DOCKERHUB.md
