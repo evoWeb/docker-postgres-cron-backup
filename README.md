@@ -9,10 +9,11 @@ Run pg_dump to back up your databases periodically using the cron task manager i
 
 ```bash
 docker container run -d \
+       --env POSTGRES_HOST=my_postgres \
        --env POSTGRES_USER=postgres \
        --env POSTGRES_PASSWORD=my_password \
-       --link postgres
-       --volume /path/to/my/backup/folder:/backup
+       --network my_network \
+       --volume /path/to/my/backup/folder:/backup \
        evoweb/postgres-cron-backup:18
 ```
 
@@ -29,34 +30,34 @@ A backup fails when no database is found or when `pg_dump` or `gzip` exits with 
 
 ## Variables
 
-- `POSTGRES_HOST`: The host/ip of your postgres database.
+- `POSTGRES_HOST`: The host/ip of your postgres database. Default: `postgres`.
 - `POSTGRES_HOST_FILE`: The file in container where to find the host of your postgres database (cf. docker secrets). You should use either POSTGRES_HOST_FILE or POSTGRES_HOST (see examples below).
-- `POSTGRES_PORT`: The port number of your postgres database.
+- `POSTGRES_PORT`: The port number of your postgres database. Default: `5432`.
 - `POSTGRES_USER`: The username of your postgres database.
 - `POSTGRES_USER_FILE`: The file in container where to find the user of your postgres database (cf. docker secrets). You should use either POSTGRES_USER_FILE or POSTGRES_USER (see examples below).
 - `POSTGRES_PASSWORD`: The password of your postgres database.
 - `POSTGRES_PASSWORD_FILE`: The file in container where to find the password of your postgres database (cf. docker secrets). You should use either POSTGRES_PASSWORD_FILE or POSTGRES_PASSWORD (see examples below).
-- `POSTGRES_DB`: The database name to dump. Default: `--all-databases`.
+- `POSTGRES_DB`: The database name to dump. Default: all databases except `postgres` and the templates.
 - `POSTGRES_DB_FILE`: The file in container where to find the database name(s) in your postgres database (cf. docker secrets). In that file, there can be several database names: one per line. You should use either POSTGRES_DB or POSTGRES_DB_FILE (see examples below).
-- `PG_DUMP_OPTS`: Command line arguments to pass to pg_dump (see [pg_dump documentation](https://www.postgresql.org/docs/current/app-pgdump.html)).
+- `PG_DUMP_OPTS`: Command line arguments to pass to pg_dump (see [pg_dump documentation](https://www.postgresql.org/docs/current/app-pgdump.html)). Default: `--rows-per-insert=1`.
 - `PSQL_SSL_OPTS`: Command line arguments to use [SSL](https://www.postgresql.org/docs/current/ssl-tcp.html).
 - `CRON_TIME`: The interval of cron job to run pg_dump. `0 3 * * sun` by default, which is every Sunday at 03:00. It uses UTC timezone.
-- `MAX_BACKUPS`: The number of backups to keep. When reaching the limit, the old backup will be discarded. No limit by default.
-- `INIT_BACKUP`: If set, create a backup when the container starts.
+- `MAX_BACKUPS`: The number of backups to keep per database. When reaching the limit, the oldest backup of that database will be discarded. No limit by default.
+- `INIT_BACKUP`: If set to `1`, create a backup when the container starts. `0` disables it.
 - `INIT_RESTORE_LATEST`: If set, restores latest backup.
 - `EXIT_BACKUP`: If set, create a backup when the container stops.
-- `TIMEOUT`: Wait a given number of seconds for the database to be ready and make the first backup, `10s` by default. After that time, the initial attempt for backup gives up and only the Cron job will try to make a backup.
+- `TIMEOUT`: How long to wait on startup for the database port to be reachable, `10s` by default. If the database is not reachable within that time, the container exits with an error and is restarted according to its restart policy.
 - `GZIP_LEVEL`: Specify the level of gzip compression from 1 (quickest, least compressed) to 9 (slowest, most compressed), default is 6.
 - `USE_PLAIN_SQL`: If set, back up and restore plain SQL files without gzip.
 - `TZ`: Specify TIMEZONE in Container. E.g. "Europe/Berlin". Default is UTC.
 
 If you want to make this image the perfect companion of your Postgres container,
 use [docker-compose](https://docs.docker.com/compose/). You can add more services
-that will be able to connect to the Postgres image using the name `my_postgres`,
+that will be able to connect to the Postgres image using the service name `postgres`,
 note that you only expose the port `5432` internally to the servers and not to the host:
 
 
-### docker compose with POSTGRES_PASS env var:
+### docker compose with POSTGRES_PASSWORD env var:
 
 ```yaml
 networks:
@@ -78,11 +79,11 @@ services:
             - 5432
         volumes:
             - data:/var/lib/postgresql
-            - ${VOLUME_PATH}/backup:/backup
+            - backup:/backup
         environment:
             POSTGRES_DB: ${POSTGRES_DB}
-            POSTGRES_USER: ${BW_DB_USERNAME}
-            POSTGRES_PASSWORD: ${BW_DB_PASSWORD}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
         restart: unless-stopped
         networks:
             - backend
@@ -95,14 +96,14 @@ services:
         depends_on:
             - postgres
         volumes:
-            - ${VOLUME_PATH}/backup:/backup
+            - backup:/backup
             # activate while developing
-            - ./Scripts:/Scripts
+            #- ./Scripts:/Scripts
         environment:
             POSTGRES_HOST: postgres
             POSTGRES_DB: ${POSTGRES_DB}
-            POSTGRES_USER: ${BW_DB_USERNAME}
-            POSTGRES_PASSWORD: ${BW_DB_PASSWORD}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
             PG_DUMP_OPTS: --no-tablespaces
             MAX_BACKUPS: 15
             INIT_BACKUP: 0
@@ -205,7 +206,7 @@ To restore a database from a certain backup you may have to specify the database
 services:
     postgres-cron-backup:
         image: evoweb/postgres-cron-backup:18
-        command: "/restore.sh /backup/201708060500.${DATABASE_NAME}.sql.gz"
+        command: "/Scripts/restore.sh /backup/201708060500.${DATABASE_NAME}.sql.gz"
         depends_on:
             - postgres
         volumes:
@@ -221,7 +222,7 @@ services:
 ### Restore using a docker command
 
 ```bash
-docker container exec <your_postgres_backup_container_name> /restore.sh /backup/<your_sql_backup_gz_file>
+docker container exec <your_postgres_backup_container_name> /Scripts/restore.sh /backup/<your_sql_backup_gz_file>
 ```
 
 If no database name is specified, `restore.sh` will try to find the database name from the backup file.
@@ -268,25 +269,9 @@ services:
         volumes:
             - data:/var/lib/postgresql
             # If there is no scheme, restore using the init script (if exists)
-            - ./init-script.sql:/docker-entrypoint-initdb.d/database.sql.gz
+            - ./init-script.sql:/docker-entrypoint-initdb.d/database.sql
         environment:
             - POSTGRES_DB=${DATABASE_NAME}
-            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-        restart: unless-stopped
-```
-
-```yaml
-services:
-    postgres:
-        image: postgres
-        expose:
-            - 5432
-        volumes:
-            - data:/var/lib/postgresql
-            # If there is no scheme, restore using the init script (if exists)
-            - ./init-script.sql:/docker-entrypoint-initdb.d/database.sql.gz
-        environment:
-            - POSTGRES_DATABASE=${DATABASE_NAME}
             - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
         restart: unless-stopped
 ```
