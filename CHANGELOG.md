@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.8 - 2026-10-30
+
+### Changes
+
+- [FEATURE] Add make release to tag releases including their changelog
+- [FEATURE] Generate the changelog from git tags and commits
+
 ## 2.0.7 - 2026-10-30
 
 ### Breaking changes
